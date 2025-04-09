@@ -1,20 +1,18 @@
-import os
+import streamlit as st
 from openai import OpenAI
 
 def generate_refined_keywords(product_info: dict, aggregated_text: str) -> list:
     """
-    Uses the OpenAI API to generate a concise list of product-relevant keywords based on the
-    provided product information and aggregated Reddit text. It excludes generic tokens.
+    Uses the OpenAI API (with credentials from st.secrets) to generate a comma-separated list of product-relevant keywords.
     """
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model_name = os.getenv("MODEL_NAME", "gpt-4o")
-    temperature = float(os.getenv("TEMPERATURE", "0.7"))
+    client = OpenAI(api_key=st.secrets["openai"]["OPENAI_API_KEY"])
+    model_name = st.secrets["openai"].get("MODEL_NAME", "gpt-4o")
+    temperature = float(st.secrets["openai"].get("TEMPERATURE", 0.7))
     
     prompt = (
-        "You are an expert in marketing and keyword analysis. "
-        "Given the following product information and Reddit data, generate a concise, comma-separated list "
-        "of keywords that best represent the product. Exclude any generic terms such as 'https', 'com', 'reddit', 'word', 'sure' "
-        "or any tokens that do not relate directly to the product.\n\n"
+        "You are an expert in marketing and keyword analysis. Given the following product information and Reddit data, "
+        "generate a concise, comma-separated list of keywords that best represent the product. "
+        "Exclude generic terms such as 'https', 'com', 'reddit', etc.\n\n"
         "Product Information:\n"
     )
     for key, value in product_info.items():
@@ -39,20 +37,20 @@ def generate_refined_keywords(product_info: dict, aggregated_text: str) -> list:
 
 def generate_hook(prompt: str) -> str:
     """
-    Uses the new OpenAI API to generate content hooks based on the provided prompt.
+    Uses the OpenAI API (with credentials from st.secrets) to generate content hooks based on the provided prompt.
     Returns a newline-separated string of hooks.
     """
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-    model_name = os.getenv("MODEL_NAME", "gpt-4o")
-    temperature = float(os.getenv("TEMPERATURE", "0.7"))
+    client = OpenAI(api_key=st.secrets["openai"]["OPENAI_API_KEY"])
+    model_name = st.secrets["openai"].get("MODEL_NAME", "gpt-4o")
+    temperature = float(st.secrets["openai"].get("TEMPERATURE", 0.7))
     
     input_messages = [
         {
             "role": "developer",
             "content": (
-                "You are a creative copywriter known for producing hooks that immediately capture attention. "
-                "Your hooks should blend a base hook structure with real examples from Reddit data, using bold, vivid, "
-                "and emotionally engaging language. Do not be generic—make each hook distinct and memorable."
+                "You are a creative copywriter who specializes in producing hooks that immediately capture attention. "
+                "Your hooks should blend elements from the provided hook templates with language inspired by the product details and real Reddit data. "
+                "Do not be generic—make each hook distinct and memorable."
             )
         },
         {

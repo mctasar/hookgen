@@ -1,4 +1,4 @@
-# Global constant for hook templates (merged generic base structures and clickbaity examples)
+# Global constant for hook templates (merged generic and clickbaity examples)
 HOOK_TEMPLATES = [
     "If you _______, stop scrolling!",
     "The BEST way to _______.",
@@ -95,13 +95,19 @@ HOOK_TEMPLATES = [
 ]
 
 def construct_prompt(marketing_inputs: dict, refined_keywords: list, sentiment: dict,
-                     reddit_hook_examples: list, n_hooks: int) -> str:
-    prompt = (
-        "You are a creative copywriter who specializes in producing hooks that immediately capture attention. "
-        "Your task is to generate creative, clickbaity, and engaging hook options using the inputs below. "
-        "Each hook should blend elements from the provided hook templates with language inspired by the product and Reddit data. "
-        "Do not be generic; be bold, vivid, and tailored to the product.\n\n"
-    )
+                     reddit_hook_examples: list, n_hooks: int, base_instruction: str = None) -> str:
+    """
+    Constructs the final prompt to generate hooks. If a base_instruction is provided (from the UI),
+    it is used as the initial instruction; otherwise a default is used.
+    """
+    if base_instruction is None:
+        base_instruction = ("You are a creative copywriter who specializes in producing hooks that immediately capture attention. "
+                            "Your task is to generate creative, clickbaity, and engaging hook options using the inputs below. "
+                            "Each hook should blend elements from the provided hook templates with language inspired by the product and Reddit data. "
+                            "Do not be generic; be bold, vivid, and tailored to the product.")
+    
+    prompt = base_instruction + "\n\n"
+    
     if marketing_inputs:
         prompt += "Product/Service Information:\n"
         for key, value in marketing_inputs.items():
@@ -114,7 +120,6 @@ def construct_prompt(marketing_inputs: dict, refined_keywords: list, sentiment: 
     prompt += "Reddit Insights (Sentiment):\n"
     prompt += f"- Overall Sentiment: {sentiment}\n\n"
     
-    # Adjust tone instructions based on sentiment compound score
     if sentiment.get("compound", 0) < 0.3:
         prompt += "Note: The overall sentiment from Reddit is slightly negative. Emphasize a hopeful, transformative tone in the hooks.\n\n"
     else:

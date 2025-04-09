@@ -1,4 +1,6 @@
 .venv/
 .env
+.streamlit/
+*.toml
 outputs/
 *.ipynb

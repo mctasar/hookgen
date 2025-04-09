@@ -1,8 +1,9 @@
 import os
 import re
+import json
 import logging
 import streamlit as st
-from modules import reddit_data, data_processing, prompt_generator, hook_generator
+from modules import reddit_data, data_processing, prompt_generator, hook_generator, defaults
 from modules.prompt_generator import HOOK_TEMPLATES
 from modules.tools import save_output, normalize_text
 
@@ -11,88 +12,100 @@ logger = logging.getLogger(__name__)
 
 st.title("Hook Generator")
 
-# Sidebar: Input Parameters (with defaults)
+# Load saved defaults from temp.json (or use built-in defaults if none exists)
+saved_defaults = defaults.load_defaults()
+if "product_info" not in st.session_state:
+    st.session_state["product_info"] = saved_defaults["product_info"].copy()
+if "base_instruction" not in st.session_state:
+    st.session_state["base_instruction"] = saved_defaults["base_instruction"]
+
+# Sidebar: Input Parameters using session state
 st.sidebar.header("Product Information")
-product_name = st.sidebar.text_input("Product Name", value="FastingPro")
-product_description = st.sidebar.text_area(
+st.session_state["product_info"]["PRODUCT_NAME"] = st.sidebar.text_input(
+    "Product Name", 
+    value=st.session_state["product_info"]["PRODUCT_NAME"], 
+    key="product_name_input"
+)
+st.session_state["product_info"]["PRODUCT_DESCRIPTION"] = st.sidebar.text_area(
     "Product Description", 
-    value="FastingPro is an innovative fasting app that provides personalized fasting schedules, real-time tracking, and expert tips to help you achieve your health goals."
+    value=st.session_state["product_info"]["PRODUCT_DESCRIPTION"], 
+    key="product_description_input"
 )
-target_audience = st.sidebar.text_input(
+st.session_state["product_info"]["TARGET_AUDIENCE"] = st.sidebar.text_input(
     "Target Audience", 
-    value="Health-conscious individuals, fitness enthusiasts, and anyone looking to improve their lifestyle through intermittent fasting."
+    value=st.session_state["product_info"]["TARGET_AUDIENCE"], 
+    key="target_audience_input"
 )
-key_benefits = st.sidebar.text_area(
+st.session_state["product_info"]["KEY_BENEFITS"] = st.sidebar.text_area(
     "Key Benefits", 
-    value="Personalized fasting plans, progress tracking, expert guidance, and a supportive community."
+    value=st.session_state["product_info"]["KEY_BENEFITS"], 
+    key="key_benefits_input"
 )
-brand_tone = st.sidebar.text_input("Brand Tone", value="Empowering, motivational, and informative")
-context_info = st.sidebar.text_area(
+st.session_state["product_info"]["BRAND_TONE"] = st.sidebar.text_input(
+    "Brand Tone", 
+    value=st.session_state["product_info"]["BRAND_TONE"], 
+    key="brand_tone_input"
+)
+st.session_state["product_info"]["CONTEXT_INFO"] = st.sidebar.text_area(
     "Context Information", 
-    value="Introducing our latest update with enhanced tracking features and new expert resources to help users maximize the benefits of intermittent fasting."
+    value=st.session_state["product_info"]["CONTEXT_INFO"], 
+    key="context_info_input"
 )
-n_hooks_ui = st.sidebar.number_input("Number of Hooks", min_value=1, max_value=20, value=3)
+n_hooks_ui = st.sidebar.number_input(
+    "Number of Hooks", min_value=1, max_value=20, 
+    value=int(st.secrets["openai"].get("N_HOOKS", 3)), 
+    key="n_hooks_input"
+)
 
 st.sidebar.header("Base Prompt Instruction")
-default_base_instruction = (
-    "You are a creative copywriter who specializes in producing hooks that immediately capture attention. "
-    "Your task is to generate creative, clickbaity, and engaging hook options using the information provided below. "
-    "Each hook should blend elements from the provided hook templates with language inspired by the product details and real Reddit data. "
-    "Do not be generic; be bold, vivid, and tailored to the product."
+base_instruction = st.sidebar.text_area(
+    "Edit Base Prompt Instruction", 
+    value=st.session_state["base_instruction"], 
+    height=150, 
+    key="base_instruction_input"
 )
-base_instruction = st.sidebar.text_area("Edit Base Prompt Instruction", value=default_base_instruction, height=150)
+
+def update_session_state():
+    st.session_state["product_info"] = {
+        "PRODUCT_NAME": st.session_state["product_name_input"],
+        "PRODUCT_DESCRIPTION": st.session_state["product_description_input"],
+        "TARGET_AUDIENCE": st.session_state["target_audience_input"],
+        "KEY_BENEFITS": st.session_state["key_benefits_input"],
+        "BRAND_TONE": st.session_state["brand_tone_input"],
+        "CONTEXT_INFO": st.session_state["context_info_input"],
+    }
+    st.session_state["base_instruction"] = st.session_state["base_instruction_input"]
+
+update_session_state()
+
+if st.sidebar.button("Save Inputs as Defaults"):
+    current_defaults = {
+        "product_info": st.session_state["product_info"],
+        "base_instruction": st.session_state["base_instruction"]
+    }
+    with open("temp.json", "w", encoding="utf-8") as f:
+        json.dump(current_defaults, f, indent=4, ensure_ascii=False)
+    defaults.save_defaults(current_defaults["product_info"], current_defaults["base_instruction"])
+    st.sidebar.success("Inputs saved as defaults!")
+
+if st.sidebar.button("Revert to Defaults"):
+    loaded = defaults.revert_to_defaults()  # Loads built-in defaults and updates temp.json
+    st.session_state["product_info"] = loaded["product_info"].copy()
+    st.session_state["base_instruction"] = loaded["base_instruction"]
+    if hasattr(st, "experimental_rerun"):
+        st.experimental_rerun()
+    else:
+        st.sidebar.info("Reverted to defaults! Please refresh the page if inputs do not update.")
 
 def get_marketing_inputs() -> dict:
-    # Removed CALL_TO_ACTION, as requested.
-    return {
-        "PRODUCT_NAME": product_name,
-        "PRODUCT_DESCRIPTION": product_description,
-        "TARGET_AUDIENCE": target_audience,
-        "KEY_BENEFITS": key_benefits,
-        "BRAND_TONE": brand_tone,
-        "CONTEXT_INFO": context_info,
-    }
-
-def discover_subreddits(product_info: dict, n: int = 10) -> list:
-    """
-    Uses the OpenAI API to discover a list of relevant subreddit names using st.secrets.
-    """
-    from openai import OpenAI
-    client = OpenAI(api_key=st.secrets["openai"]["OPENAI_API_KEY"])
-    model_name = st.secrets["openai"].get("MODEL_NAME", "gpt-4o")
-    temperature = float(st.secrets["openai"].get("TEMPERATURE", 0.7))
-    
-    prompt = (
-        "You are an expert in social media and online communities. Based on the following product information, "
-        "list 10 relevant subreddit names (only the names, separated by commas or as a numbered list) where people discuss "
-        "topics related to this product.\n\nProduct Information:\n"
-    )
-    for key, value in product_info.items():
-        prompt += f"- {key}: {value}\n"
-    
-    response = client.responses.create(
-        model=model_name,
-        input=[{"role": "user", "content": prompt}],
-        temperature=temperature
-    )
-    output = response.output_text
-    if isinstance(output, list):
-        raw = output[0].get("content", "")
-    elif isinstance(output, str):
-        raw = output
-    else:
-        raw = str(output)
-    
-    # Extract subreddit names using a regex
-    subreddits = re.findall(r'(?:\d+\.\s*)?([a-zA-Z0-9_]+)', raw)
-    return subreddits[:n]
+    return st.session_state["product_info"]
 
 if st.button("Generate Hooks"):
     product_info = get_marketing_inputs()
     
     with st.spinner("Generating hooks..."):
-        # 1. Discover relevant subreddits
-        discovered_subreddits = discover_subreddits(product_info, n=10)
+        # 1. Discover subreddits using product info
+        discovered_subreddits = reddit_data.discover_subreddits(product_info, n=10)
         logger.info("Discovered Subreddits: %s", discovered_subreddits)
         
         # 2. Fetch Reddit data from discovered subreddits
@@ -107,23 +120,23 @@ if st.button("Generate Hooks"):
         # 4. Perform sentiment analysis on aggregated posts
         sentiment = data_processing.analyze_sentiment(all_reddit_posts)
         
-        # 5. Extract hook examples from Reddit data
+        # 5. Extract hook-like examples from Reddit data
         reddit_hook_examples = data_processing.extract_hook_examples(reddit_posts_by_subreddit, example_limit=3)
         
-        # 6. Generate refined, product-relevant keywords using an intermediate prompt
+        # 6. Generate refined keywords based on product info and aggregated Reddit text
         refined_keywords = hook_generator.generate_refined_keywords(product_info, aggregated_text)
         
-        # 7. Use the UI number input for number of hooks
+        # 7. Get number of hooks from UI
         n_hooks = n_hooks_ui
         
-        # 8. Construct the final prompt—pass base_instruction from UI to allow editing!
+        # 8. Construct the final prompt using HOOK_TEMPLATES and the UI-edited base instruction
         final_prompt = prompt_generator.construct_prompt(
             product_info,
             refined_keywords,
             sentiment,
             reddit_hook_examples,
             n_hooks,
-            base_instruction=base_instruction
+            base_instruction=st.session_state["base_instruction"]
         )
         logger.info("Constructed Prompt:\n%s", final_prompt)
         
@@ -131,10 +144,10 @@ if st.button("Generate Hooks"):
         generated_hooks_raw = hook_generator.generate_hook(final_prompt)
         logger.info("Raw Generated Hooks: %s", generated_hooks_raw)
         
-        # 10. Normalize and split the hooks
+        # 10. Normalize and split the generated hooks into a list (one per line)
         generated_hooks = [normalize_text(hook.strip()) for hook in generated_hooks_raw.splitlines() if hook.strip()]
         
-        # 11. Save all run data as a JSON locally
+        # 11. Save run data locally as JSON in the outputs folder
         run_data = {
             "marketing_inputs": product_info,
             "discovered_subreddits": discovered_subreddits,
@@ -144,11 +157,12 @@ if st.button("Generate Hooks"):
             "captured_reddit_examples": reddit_hook_examples,
             "hook_templates": HOOK_TEMPLATES,
             "n_hooks": n_hooks,
-            "base_instruction": base_instruction,
+            "base_instruction": st.session_state["base_instruction"],
             "constructed_prompt": final_prompt,
             "generated_hooks": generated_hooks,
         }
         save_output(run_data)
+        st.session_state["run_data"] = run_data  # Save for potential future use
     
     st.success("Hooks generated successfully!")
     st.header("Generated Hooks")

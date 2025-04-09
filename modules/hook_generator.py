@@ -3,7 +3,7 @@ from openai import OpenAI
 
 def generate_refined_keywords(product_info: dict, aggregated_text: str) -> list:
     """
-    Uses the OpenAI API (with credentials from st.secrets) to generate a comma-separated list of product-relevant keywords.
+    Uses OpenAI API with credentials from st.secrets to generate a comma-separated list of product-relevant keywords.
     """
     client = OpenAI(api_key=st.secrets["openai"]["OPENAI_API_KEY"])
     model_name = st.secrets["openai"].get("MODEL_NAME", "gpt-4o")
@@ -37,7 +37,7 @@ def generate_refined_keywords(product_info: dict, aggregated_text: str) -> list:
 
 def generate_hook(prompt: str) -> str:
     """
-    Uses the OpenAI API (with credentials from st.secrets) to generate content hooks based on the provided prompt.
+    Uses OpenAI API with credentials from st.secrets to generate content hooks.
     Returns a newline-separated string of hooks.
     """
     client = OpenAI(api_key=st.secrets["openai"]["OPENAI_API_KEY"])

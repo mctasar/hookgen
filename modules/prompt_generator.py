@@ -95,17 +95,11 @@ HOOK_TEMPLATES = [
 ]
 
 def construct_prompt(marketing_inputs: dict, refined_keywords: list, sentiment: dict,
-                     reddit_hook_examples: list, n_hooks: int, base_instruction: str = None) -> str:
+                     reddit_hook_examples: list, n_hooks: int, base_instruction: str) -> str:
     """
-    Constructs the final prompt to generate hooks. If a base_instruction is provided (from the UI),
-    it is used as the initial instruction; otherwise a default is used.
+    Constructs the final prompt for generating hooks using the provided product info, refined keywords,
+    sentiment data, Reddit examples, desired number of hooks, and a base prompt instruction.
     """
-    if base_instruction is None:
-        base_instruction = ("You are a creative copywriter who specializes in producing hooks that immediately capture attention. "
-                            "Your task is to generate creative, clickbaity, and engaging hook options using the inputs below. "
-                            "Each hook should blend elements from the provided hook templates with language inspired by the product and Reddit data. "
-                            "Do not be generic; be bold, vivid, and tailored to the product.")
-    
     prompt = base_instruction + "\n\n"
     
     if marketing_inputs:

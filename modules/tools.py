@@ -29,6 +29,7 @@ def save_output(data: dict, output_dir: str = "outputs") -> None:
         os.makedirs(output_dir)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_file = os.path.join(output_dir, f"run_{timestamp}.json")
-    with open(output_file, "w") as f:
-        json.dump(data, f, indent=4)
+    # Write without ASCII escaping.
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
     print(f"Output saved to {output_file}")
